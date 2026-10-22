@@ -223,6 +223,74 @@ fn to_at(uv: vec2<f32>) -> vec4<f32> {
 }
 "#;
 
+/// What a transition is given on top of the libraries: the curves a camera
+/// move rides, and a camera that cuts from one picture to the other with
+/// its edges mirrored, so a picture moved or turned never shows black.
+const TRANSITION_LIBRARY: &str = r#"
+// ── the transition library ──
+
+/// Slow, fast, slow: the shape of most camera moves.
+fn ease_in_out_cubic(p: f32) -> f32 {
+    if (p < 0.5) {
+        return 4.0 * p * p * p;
+    }
+    let q = -2.0 * p + 2.0;
+    return 1.0 - q * q * q / 2.0;
+}
+
+/// Fast, then a long settle.
+fn ease_out_quint(p: f32) -> f32 {
+    let q = 1.0 - p;
+    return 1.0 - q * q * q * q * q;
+}
+
+/// Runs past the end and comes back: `s` is how far, 1.70158 the usual.
+fn ease_out_back(p: f32, s: f32) -> f32 {
+    let q = p - 1.0;
+    return 1.0 + (s + 1.0) * q * q * q + s * q * q;
+}
+
+/// Zero at both ends of the cut, one in its middle.
+fn bell(p: f32) -> f32 {
+    // No `PI` constant: a package of the user's own may declare one.
+    return sin(3.14159265359 * clamp(p, 0.0, 1.0));
+}
+
+/// `uv` folded back into the picture, mirrored at every edge.
+fn mirror_uv(uv: vec2<f32>) -> vec2<f32> {
+    return 1.0 - abs(fract(uv * 0.5) * 2.0 - 1.0);
+}
+
+/// `uv` turned by `angle` radians about `centre`, measured on the frame
+/// rather than the unit square, so a turn keeps its shape on any aspect.
+fn turn_about(uv: vec2<f32>, centre: vec2<f32>, angle: f32) -> vec2<f32> {
+    let aspect = frame.size.x / frame.size.y;
+    let d = (uv - centre) * vec2<f32>(aspect, 1.0);
+    let c = cos(angle);
+    let s = sin(angle);
+    return centre + vec2<f32>(c * d.x - s * d.y, s * d.x + c * d.y) / vec2<f32>(aspect, 1.0);
+}
+
+/// The camera's picture at `uv`: the outgoing one before the cut, the
+/// incoming one after, both mirrored past their edges. The cut is a
+/// dissolve over a few hundredths of the transition, so it never pops on
+/// one frame, but short enough to stay hidden under the motion.
+fn camera_at(uv: vec2<f32>, progress: f32) -> vec4<f32> {
+    let m = mirror_uv(uv);
+    return mix(from_at(m), to_at(m), smoothstep(0.47, 0.53, progress));
+}
+
+/// The camera's picture smeared along `motion`, the distance in uv the
+/// picture travels while the shutter is open: nine taps centred on `uv`.
+fn camera_blur(uv: vec2<f32>, motion: vec2<f32>, progress: f32) -> vec4<f32> {
+    var sum = vec4<f32>(0.0);
+    for (var i: i32 = 0; i < 9; i++) {
+        sum += camera_at(uv + motion * (f32(i) / 8.0 - 0.5), progress);
+    }
+    return sum / 9.0;
+}
+"#;
+
 /// What every shader is given whatever it is and whichever contract it
 /// keeps: they read only the frame's size and the table, which both heads
 /// declare. (`hash` is each edition's own: see the libraries.)
@@ -900,7 +968,7 @@ impl Contract {
         };
         let reading: &[&str] = match (entry, self) {
             (Entry::Effect, _) => &[EFFECT_SAMPLE_PREMULTIPLIED],
-            (Entry::Transition, _) => &[],
+            (Entry::Transition, _) => &[TRANSITION_LIBRARY],
         };
         [
             &[head, sampling][..],
