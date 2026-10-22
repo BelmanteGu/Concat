@@ -1,0 +1,45 @@
+format = 2
+
+[effect]
+id = "concat.pan-rotate"
+name = "Pan & Rotate"
+kind = "transition"
+category = "Camera"
+order = 1
+description = "The camera whips across the frame while it turns, cutting at full speed."
+
+[[param]]
+key = "direction"
+label = "Direction"
+type = "enum"
+min = 0
+max = 3
+default = 0
+values = [0, 1, 2, 3]
+labels = ["Left", "Right", "Up", "Down"]
+
+[[param]]
+key = "rotation"
+label = "Rotation"
+min = -90
+max = 90
+default = 30
+step = 1
+unit = "°"
+
+[[param]]
+key = "blur"
+label = "Motion blur"
+min = 0
+max = 100
+default = 60
+step = 1
+unit = "%"
+
+[transition]
+entry = "effect.wgsl"
+xfade = "smoothleft"
+fallback = "cross-fade"
+
+[card]
+progress = 0.4

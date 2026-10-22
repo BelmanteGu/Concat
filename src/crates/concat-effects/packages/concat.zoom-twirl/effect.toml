@@ -1,0 +1,44 @@
+format = 2
+
+[effect]
+id = "concat.zoom-twirl"
+name = "Zoom & Twirl"
+kind = "transition"
+category = "Camera"
+order = 3
+description = "The middle of the shot twists into a vortex as the camera pushes in, and the next shot untwists out of it."
+
+[[param]]
+key = "zoom"
+label = "Zoom"
+min = 0
+max = 100
+default = 40
+step = 1
+unit = "%"
+
+[[param]]
+key = "twirl"
+label = "Twirl"
+min = -360
+max = 360
+default = 180
+step = 1
+unit = "°"
+
+[[param]]
+key = "blur"
+label = "Motion blur"
+min = 0
+max = 100
+default = 50
+step = 1
+unit = "%"
+
+[transition]
+entry = "effect.wgsl"
+xfade = "radial"
+fallback = "cross-fade"
+
+[card]
+progress = 0.42

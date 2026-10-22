@@ -1,0 +1,62 @@
+format = 2
+
+[effect]
+id = "concat.camera-shake"
+name = "Camera Shake"
+kind = "transition"
+category = "Camera"
+order = 0
+description = "A handheld jolt that peaks on the cut and hides it under the motion."
+
+[[param]]
+key = "amplitude"
+label = "Amplitude"
+min = 0
+max = 100
+default = 40
+step = 1
+unit = "%"
+
+[[param]]
+key = "frequency"
+label = "Frequency"
+type = "int"
+min = 2
+max = 30
+default = 12
+step = 1
+
+[[param]]
+key = "rotation"
+label = "Rotation"
+min = 0
+max = 15
+default = 4
+step = 0.5
+unit = "°"
+
+[[param]]
+key = "seed"
+label = "Seed"
+type = "int"
+min = 0
+max = 99
+default = 7
+step = 1
+
+[[param]]
+key = "blur"
+label = "Motion blur"
+min = 0
+max = 100
+default = 50
+step = 1
+unit = "%"
+
+[transition]
+entry = "effect.wgsl"
+xfade = "fadefast"
+fallback = "cross-fade"
+
+[card]
+progress = 0.45

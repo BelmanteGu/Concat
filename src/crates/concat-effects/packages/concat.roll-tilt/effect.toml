@@ -1,0 +1,54 @@
+format = 2
+
+[effect]
+id = "concat.roll-tilt"
+name = "Roll & Tilt"
+kind = "transition"
+category = "Camera"
+order = 4
+description = "The shot tips away in perspective like a page turning on its axis, and the next one tips in from the other side."
+
+[[param]]
+key = "axis"
+label = "Axis"
+type = "enum"
+min = 0
+max = 1
+default = 0
+values = [0, 1]
+labels = ["Tilt", "Roll"]
+
+[[param]]
+key = "angle"
+label = "Angle"
+min = 10
+max = 80
+default = 60
+step = 1
+unit = "°"
+
+[[param]]
+key = "depth"
+label = "Depth"
+min = 0
+max = 100
+default = 50
+step = 1
+unit = "%"
+
+[[param]]
+key = "blur"
+label = "Motion blur"
+min = 0
+max = 100
+default = 40
+step = 1
+unit = "%"
+
+[transition]
+entry = "effect.wgsl"
+xfade = "fade"
+fallback = "cross-fade"
+
+[card]
+progress = 0.35

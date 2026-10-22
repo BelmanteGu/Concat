@@ -1,0 +1,53 @@
+format = 2
+
+[effect]
+id = "concat.zoom-rotate"
+name = "Zoom & Rotate"
+kind = "transition"
+category = "Camera"
+order = 2
+description = "The camera rushes in on the shot while turning and lands on the next one, settling with an optional overshoot."
+
+[[param]]
+key = "zoom"
+label = "Zoom"
+min = 0
+max = 100
+default = 50
+step = 1
+unit = "%"
+
+[[param]]
+key = "rotation"
+label = "Rotation"
+min = -180
+max = 180
+default = 45
+step = 1
+unit = "°"
+
+[[param]]
+key = "overshoot"
+label = "Overshoot"
+min = 0
+max = 100
+default = 40
+step = 1
+unit = "%"
+
+[[param]]
+key = "blur"
+label = "Motion blur"
+min = 0
+max = 100
+default = 60
+step = 1
+unit = "%"
+
+[transition]
+entry = "effect.wgsl"
+xfade = "zoomin"
+fallback = "zoom"
+
+[card]
+progress = 0.4
