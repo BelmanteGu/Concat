@@ -753,6 +753,27 @@ fn a_pass_reads_its_layers_clip_relative_time() {
     );
 }
 
+/// A pass reads how long its clip lasts through `frame.clip_duration`,
+/// so an exit can start a fixed time before the clip's end: four seconds
+/// long, three seconds in, one is left.
+#[test]
+fn a_pass_reads_its_layers_clip_duration() {
+    let Some(mut gpu) = gpu() else { return };
+    let body = "fn effect(uv: vec2<f32>) -> vec4<f32> { if (abs(frame.clip_duration - frame.clip_time - 1.0) < 0.001) { return vec4<f32>(0.0, 1.0, 0.0, 1.0); } return vec4<f32>(1.0, 0.0, 0.0, 1.0); }";
+    let mut timed = layer(solid(4, 4, [0, 0, 0, 255]));
+    timed.clip_start = concat_core::time::Rational::approximate(2.0).expect("a rational");
+    timed.clip_duration = concat_core::time::Rational::approximate(4.0).expect("a rational");
+    timed.effects = vec![package("test.clipduration", body, "", &[], 1.0)];
+    let mut p = plan(4, 4, vec![timed]);
+    p.time = concat_core::time::Rational::approximate(5.0).expect("a rational");
+    let out = gpu.render(&p);
+    assert_eq!(
+        &out.pixels()[..3],
+        &[0, 255, 0],
+        "clip_duration should read 4.0"
+    );
+}
+
 /// Every packaged transition's pipeline actually creates and runs on the
 /// GPU, across its whole progress range - naga's validation at load
 /// catches a broken shader's syntax and types, but only a real pipeline
@@ -1598,7 +1619,7 @@ fn treated(
     gpu.used.values_mut().for_each(|used| *used = 0);
     gpu.composites += 1;
     let source = written(gpu, size, picture);
-    let drawn = gpu.run_passes(size.0, size.1, source, passes, 0.0, 0.0);
+    let drawn = gpu.run_passes(size.0, size.1, source, passes, 0.0, (0.0, 0.0));
     let out = read_floats(gpu, size, drawn);
     gpu.retire();
     out

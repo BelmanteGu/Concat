@@ -1521,7 +1521,14 @@ impl WgpuCompositor {
             // whatever stack sits beneath it - so `clip_time` falls back
             // to the timeline's own clock, exactly what a package read
             // before this existed.
-            let treated = self.run_passes(width, height, below, &treatment.effects, seconds, 0.0);
+            let treated = self.run_passes(
+                width,
+                height,
+                below,
+                &treatment.effects,
+                seconds,
+                (0.0, 0.0),
+            );
             ground = Some(if strength >= 1.0 {
                 treated
             } else {
@@ -1565,7 +1572,10 @@ impl WgpuCompositor {
         };
         let geometry = layer.geometry(source, plan.width, plan.height);
         let seconds = plan.seconds();
-        let clip_start = layer.clip_start.as_f64() as f32;
+        let clip = (
+            layer.clip_start.as_f64() as f32,
+            layer.clip_duration.as_f64() as f32,
+        );
         let (size, texture, uvs, flips) = if layer.needs_preparing(&geometry) {
             let uploaded = self.upload(source);
             let made = self.make_picture(
@@ -1581,7 +1591,7 @@ impl WgpuCompositor {
                 made,
                 &layer.effects,
                 seconds,
-                clip_start,
+                clip,
             );
             (
                 geometry.fitted,
@@ -1598,7 +1608,7 @@ impl WgpuCompositor {
                     index,
                     &layer.effects,
                     seconds,
-                    clip_start,
+                    clip,
                 );
             }
             (
@@ -1881,7 +1891,7 @@ impl WgpuCompositor {
         self.used.values_mut().for_each(|used| *used = 0);
         self.composites += 1;
         let source = self.filled(side, colour);
-        let drawn = self.run_passes(side, side, source, passes, seconds, seconds);
+        let drawn = self.run_passes(side, side, source, passes, seconds, (seconds, 0.0));
         self.middle_of(side, drawn)
     }
 
@@ -2688,9 +2698,9 @@ impl WgpuCompositor {
         }
         let frame = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("concat pass frame"),
-            // size(vec2), time, intensity, clip_time, padded to Frame's own
-            // 16-byte alignment (OpenGL ES's, see concat-effects' Frame):
-            // 20 bytes rounds to 32.
+            // size(vec2), time, intensity, clip_time, clip_duration, padded
+            // to Frame's own 16-byte alignment (OpenGL ES's, see
+            // concat-effects' Frame): 24 bytes rounds to 32.
             size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -3164,7 +3174,7 @@ impl WgpuCompositor {
         source: usize,
         passes: &[ShaderPass],
         time: f32,
-        clip_start: f32,
+        (clip_start, clip_duration): (f32, f32),
     ) -> usize {
         let mut current = source;
         let mut turns: [Option<usize>; 2] = [None, None];
@@ -3193,7 +3203,7 @@ impl WgpuCompositor {
                     (width, height),
                     (current, target),
                     pass,
-                    [time, time - clip_start],
+                    [time, time - clip_start, clip_duration],
                     (lut_id, reveal_id),
                     &mut spare,
                 );
@@ -3210,7 +3220,7 @@ impl WgpuCompositor {
                 time,
                 pass.intensity,
                 time - clip_start,
-                0.0,
+                clip_duration,
             ];
             let frame_bytes: Vec<u8> = frame_block.iter().flat_map(|v| v.to_le_bytes()).collect();
             self.queue.write_buffer(&shader.frame, 0, &frame_bytes);
@@ -3264,7 +3274,8 @@ impl WgpuCompositor {
     /// of its size is free, else claimed - then the last pass into `into`,
     /// all in one submission. Every pass binds the layer and the pictures
     /// drawn before it, a blank for the rest, its own among them. `time` is
-    /// the timeline's seconds and `clip_time` the clip's; `lut_id` and
+    /// the timeline's seconds, `clip_time` the clip's and `clip_duration`
+    /// its length; `lut_id` and
     /// `reveal_id` name the tables every pass binds. The pictures go back
     /// to `spare` for the next package.
     fn run_stages(
@@ -3272,7 +3283,7 @@ impl WgpuCompositor {
         (width, height): (u32, u32),
         (layer, into): (usize, usize),
         pass: &ShaderPass,
-        [time, clip_time]: [f32; 2],
+        [time, clip_time, clip_duration]: [f32; 3],
         (lut_id, reveal_id): (u64, u64),
         spare: &mut HashMap<(u32, u32), Vec<usize>>,
     ) {
@@ -3298,7 +3309,7 @@ impl WgpuCompositor {
             time,
             pass.intensity,
             clip_time,
-            0.0,
+            clip_duration,
         ];
         let frame_bytes: Vec<u8> = frame_block.iter().flat_map(|v| v.to_le_bytes()).collect();
         self.queue.write_buffer(&shader.frame, 0, &frame_bytes);

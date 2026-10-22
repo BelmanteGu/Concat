@@ -72,6 +72,11 @@ struct Frame {
     /// stack, a synthesized ground - carry zero here always, which reads
     /// as "just started" forever; a look that only loops is unaffected.
     clip_time: f32,
+    /// How long this layer's clip lasts, in seconds, so an exit can be
+    /// timed to its end: `clip_duration - clip_time` is what is left.
+    /// Zero wherever `clip_time` is always zero. Fits in the padding the
+    /// block already had, so it stays 32 bytes.
+    clip_duration: f32,
 }
 
 @group(0) @binding(0) var source: texture_2d<f32>;
