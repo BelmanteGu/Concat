@@ -606,11 +606,17 @@ pub(crate) fn transitions_at(shapes: &[TransitionShape], frame: i64) -> Vec<Tran
 /// for the compositor to combine over; every other kind needs nothing more
 /// than what it already baked into the clips themselves.
 ///
-/// Track indices are doubled first, so an incoming clip gets an odd lane of
-/// its own directly above the pair it crosses over - stacking against every
-/// other track is preserved, and nothing else occupies odd lanes. Cuts are
-/// collected before anything mutates, so resolving one transition cannot
-/// unhook the adjacency test of the next.
+/// Track indices are spread first, so an incoming clip gets a lane of its
+/// own directly above the clip it crosses over - stacking against every
+/// other track is preserved, and nothing else occupies those lanes. Each
+/// track gets one lane more than its longest run of chained transitions
+/// (two at least, as before chains were counted): in A→B→C, C must sit
+/// above B, which already sits above A, and with only two lanes C landed
+/// on the next track's lane, pulling a caption there into the transition
+/// at full opacity (N2). Cuts are collected before anything mutates, so
+/// resolving one transition cannot unhook the adjacency test of the next,
+/// and resolved earliest first, so a clip on both sides of a chain has
+/// been lifted by the cut before it when the cut after it reads its lane.
 ///
 /// Every kind but the fades to a colour is built on one overlap, centred on
 /// the cut the way the timeline draws it: the incoming clip extends
@@ -639,9 +645,6 @@ fn resolve_transitions_at(
     rate: FrameRate,
     origin: f64,
 ) -> Vec<TransitionSpan> {
-    for clip in clips.iter_mut() {
-        clip.track *= 2;
-    }
     let mut spans: Vec<TransitionSpan> = Vec::new();
 
     let fps = rate.fps().as_f64();
@@ -674,6 +677,11 @@ fn resolve_transitions_at(
             }),
             _ => {}
         }
+    }
+    cuts.sort_by(|a, b| clips[a.incoming].start.total_cmp(&clips[b.incoming].start));
+    let lanes = lanes_per_track(&cuts, clips.len());
+    for clip in clips.iter_mut() {
+        clip.track *= lanes;
     }
 
     for cut in cuts {
@@ -839,6 +847,18 @@ struct Cut {
     kind: String,
     duration: f64,
     params: BTreeMap<String, f64>,
+}
+
+/// How many lanes each track spreads into: one for the clip a chain starts
+/// on and one more for every clip that comes in on top of the one before,
+/// at least two. `cuts` must run earliest first, so a clip's depth is known
+/// before the cut that takes it out reads it.
+fn lanes_per_track(cuts: &[Cut], clips: usize) -> usize {
+    let mut depth = vec![0; clips];
+    for cut in cuts {
+        depth[cut.incoming] = depth[cut.outgoing] + 1;
+    }
+    depth.into_iter().max().unwrap_or(0).max(1) + 1
 }
 
 /// What [`overlap`] built a transition on.
@@ -3853,6 +3873,45 @@ mod tests {
         resolve_transitions(&mut clips, FrameRate::THIRTY);
         assert_eq!(clips[0].track, 0);
         assert_eq!(clips[1].track, 6);
+    }
+
+    /// A→B→C→D with a transition on every cut, and a caption on the track
+    /// above: each incoming clip climbs over the one before it but never
+    /// into the caption's lane, whichever order the clips were listed in
+    /// (N2). Before, C landed on the caption's lane and the shader's stage
+    /// forced the caption to full opacity inside the transition.
+    #[test]
+    fn chained_transitions_stay_below_the_next_track() {
+        let mut clips: Vec<ExportClip> = (0..4)
+            .map(|n| clip("video", 0, 4.0 * n as f64, 4.0, 2.0))
+            .collect();
+        for clip in &mut clips {
+            clip.media_duration = Some(10.0);
+        }
+        clips[1].transition = spec("cross-fade", 1.0);
+        clips[2].transition = spec("concat.push", 1.0);
+        clips[3].transition = spec("cross-fade", 1.0);
+        clips.push(clip("image", 1, 0.0, 16.0, 0.0));
+        clips.swap(1, 3);
+
+        let spans = resolve_transitions(&mut clips, FrameRate::THIRTY);
+
+        let caption = clips[4].track;
+        let lane = |start: f64| {
+            clips
+                .iter()
+                .find(|clip| clip.kind == ClipKind::Video && (clip.start - start).abs() < 1.0)
+                .map(|clip| clip.track)
+                .expect("a clip near that start")
+        };
+        let chain = [lane(0.0), lane(4.0), lane(8.0), lane(12.0)];
+        assert_eq!(chain, [0, 1, 2, 3], "each climbs over the one before");
+        assert!(chain.iter().all(|&track| track < caption));
+        assert_eq!(spans.len(), 1);
+        assert!(
+            spans[0].to_track < caption,
+            "the shader's stage stops below it"
+        );
     }
 
     #[test]
